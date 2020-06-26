@@ -1,6 +1,8 @@
 #include <iostream>
 #include <random>
+#include <chrono>
 #include "TrafficLight.h"
+#include <future>
 
 /* Implementation of class "MessageQueue" */
 
@@ -23,40 +25,75 @@ void MessageQueue<T>::send(T &&msg)
     _queue.push_back(std::move(msg));
     _cond.notify_one();
 }
-*/
+
 
 /* Implementation of class "TrafficLight" */
 
-/* 
+// Constructor
 TrafficLight::TrafficLight()
 {
     _currentPhase = TrafficLightPhase::red;
+    _messages = std::make_shared<MessageQueue<TrafficLightPhase>>();
 }
 
+// Destructor
+TrafficLight::~TrafficLight() { }
+
+// Waits until the traffic light turns green
 void TrafficLight::waitForGreen()
 {
-    // FP.5b : add the implementation of the method waitForGreen, in which an infinite while-loop 
-    // runs and repeatedly calls the receive function on the message queue. 
-    // Once it receives TrafficLightPhase::green, the method returns.
+    while(true) {
+        auto phase = _messages->receive();
+        if (phase == green) {
+            return;
+        }
+    }
 }
 
+// Returns the current Phase of the traffic light
 TrafficLightPhase TrafficLight::getCurrentPhase()
 {
     return _currentPhase;
 }
 
+// Start a thread for the cycleThroughPhases function
 void TrafficLight::simulate()
 {
-    // FP.2b : Finally, the private method „cycleThroughPhases“ should be started in a thread when the public method „simulate“ is called. To do this, use the thread queue in the base class. 
+    threads.emplace_back(std::thread(&TrafficLight::cycleThroughPhases, this));
 }
 
 // virtual function which is executed in a thread
+// The function changes the phase after a random time between 4 and 6 seconds
 void TrafficLight::cycleThroughPhases()
 {
-    // FP.2a : Implement the function with an infinite loop that measures the time between two loop cycles 
-    // and toggles the current phase of the traffic light between red and green and sends an update method 
-    // to the message queue using move semantics. The cycle duration should be a random value between 4 and 6 seconds. 
-    // Also, the while-loop should use std::this_thread::sleep_for to wait 1ms between two cycles. 
-}
+    auto start = std::chrono::system_clock::now();
 
-*/
+    std::uniform_real_distribution<double> uni_dis(4.0,6.0);
+    std::default_random_engine random_engine(std::random_device{}());
+    double elapsed_min = uni_dis(random_engine);
+
+    while(true) {
+        // Reduce CPU usage
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        auto loop_time = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = loop_time-start;
+
+        if (elapsed_seconds.count() >= elapsed_min) {
+            // Change phase
+            if (_currentPhase == green) {
+                _currentPhase = red;
+            } else {
+                _currentPhase = green;
+            }
+
+            // Add the new phase to the message queue
+            auto message = _currentPhase;
+            auto f_send = std::async(std::launch::async, &MessageQueue<TrafficLightPhase>::send, _messages, std::move(message));
+            f_send.wait();
+
+            elapsed_min = uni_dis(random_engine);
+            start = std::chrono::system_clock::now(); 
+        }
+    }
+}
