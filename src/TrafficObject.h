@@ -13,7 +13,7 @@ enum ObjectType
     objectStreet,
 };
 
-class TrafficObject
+class TrafficObject 
 {
 public:
     // constructor / desctructor
